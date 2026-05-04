@@ -1,0 +1,23 @@
+# Dependencies
+node_modules
+
+# Firebase service account (sensitive — never commit)
+config/firebase-service-account.json
+
+# Environment variables (sensitive)
+.env
+.env.local
+.env.production
+
+# Logs
+logs
+*.log
+npm-debug.log*
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Build output (if applicable)
+dist
+build
