@@ -165,9 +165,44 @@ exports.createLead = async (req, res) => {
 
 exports.getAllLeads = async (req, res) => {
   try {
-    const { status, search, page = 1, limit = 20 } = req.query;
+    const { status, search, page = 1, limit = 10, fromDate, toDate } = req.query;
     const query = { isDeleted: false };
-    if (status && status !== "all") query.status = status;
+    
+    // Handle special status filters
+    if (status && status !== "all") {
+      if (status === "Active") {
+        // Active = not completed
+        query.isCompleted = false;
+      } else if (status === "Completed") {
+        // Completed = is completed
+        query.isCompleted = true;
+      } else if (status === "Pending Payment") {
+        // Pending Payment = deal done and remaining balance > 0
+        query.currentStep = { $in: ['dealDone', 'installationAssigned', 'installationStarted', 'installation', 'meter', 'portal', 'subsidy', 'payment', 'agreementUpload'] };
+        query.$or = [
+          { 'payment.remainingBalance': { $gt: 0 } },
+          { 'payment.totalAmount': { $gt: 0, $ne: null } }
+        ];
+      } else {
+        // Specific workflow status (e.g., "New Lead", "Visit Scheduled", etc.)
+        query.status = status;
+      }
+    }
+    
+    // Handle date range filtering
+    if (fromDate || toDate) {
+      query.createdAt = {};
+      if (fromDate) {
+        const start = new Date(fromDate);
+        query.createdAt.$gte = start;
+      }
+      if (toDate) {
+        const end = new Date(toDate);
+        end.setHours(23, 59, 59, 999); // Set to end of day
+        query.createdAt.$lte = end;
+      }
+    }
+    
     if (search) {
       query.$or = [
         { customerName: { $regex: search, $options: "i" } },

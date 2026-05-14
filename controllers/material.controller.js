@@ -285,11 +285,32 @@ exports.createMaterial = async (req, res) => {
 
 exports.getAllMaterials = async (req, res) => {
   try {
-    const materials = await Material.find()
-      .populate({ path: "createdBy", select: "_id name role" })
-      .sort({ createdAt: -1 });
+    // Pagination params
+    let { page = 1, limit = 10 } = req.query;
+    page = parseInt(page, 10);
+    limit = parseInt(limit, 10);
+    if (isNaN(page) || page < 1) page = 1;
+    if (isNaN(limit) || limit < 1) limit = 10;
 
-    return res.status(200).json({ success: true, materials });
+    const skip = (page - 1) * limit;
+
+    const [materials, total] = await Promise.all([
+      Material.find()
+        .populate({ path: "createdBy", select: "_id name role" })
+        .sort({ createdAt: -1 })
+        .skip(skip)
+        .limit(limit),
+      Material.countDocuments(),
+    ]);
+
+    return res.status(200).json({
+      success: true,
+      materials,
+      total,
+      page,
+      limit,
+      totalPages: Math.ceil(total / limit),
+    });
   } catch (error) {
     console.error("GET MATERIALS ERROR:", error);
     return res.status(500).json({ success: false, message: "Server error" });

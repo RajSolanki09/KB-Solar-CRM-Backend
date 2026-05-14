@@ -183,19 +183,55 @@ exports.createLead = async (req, res) => {
 // ── GET ALL ──────────────────────────────────────────────────────────────────
 exports.getAllLeads = async (req, res) => {
   try {
+    const { status, search, page = 1, limit = 10, fromDate, toDate } = req.query;
     const query = { isDeleted: { $ne: true } };
-    if (req.query.status) query.currentStep = req.query.status;
-    if (req.query.isCompleted) query.isCompleted = req.query.isCompleted === "true";
-    if (req.query.search) {
+    
+    // Handle special status filters
+    if (status && status !== "all") {
+      if (status === "Active") {
+        // Active = not completed
+        query.isCompleted = false;
+      } else if (status === "Completed") {
+        // Completed = is completed
+        query.isCompleted = true;
+      } else if (status === "Pending Payment") {
+        // Pending Payment = deal done and remaining balance > 0
+        query.currentStep = { $in: ['dealDone', 'installationAssigned', 'installationStarted', 'installationCompleted', 'systemTested', 'fullPayment'] };
+        query.$or = [
+          { 'payment.remainingBalance': { $gt: 0 } },
+          { 'payment.totalAmount': { $gt: 0, $ne: null } }
+        ];
+      } else {
+        // Specific workflow status (e.g., "newLead", "siteVisit", etc.)
+        query.currentStep = status;
+      }
+    }
+    
+    // Handle date range filtering
+    if (fromDate || toDate) {
+      query.createdAt = {};
+      if (fromDate) {
+        const start = new Date(fromDate);
+        query.createdAt.$gte = start;
+      }
+      if (toDate) {
+        const end = new Date(toDate);
+        end.setHours(23, 59, 59, 999); // Set to end of day
+        query.createdAt.$lte = end;
+      }
+    }
+    
+    // Handle search (name, phone)
+    if (search) {
       query.$or = [
-        { customerName: { $regex: req.query.search, $options: "i" } },
-        { phone: { $regex: req.query.search, $options: "i" } },
+        { customerName: { $regex: search, $options: "i" } },
+        { phone: { $regex: search, $options: "i" } },
       ];
     }
-    const page = Math.max(Number(req.query.page) || 1, 1);
-    const limit = Math.min(Number(req.query.limit) || 20, 100);
-    const skip = (page - 1) * limit;
-
+    
+    const skip = (Math.max(Number(page), 1) - 1) * Math.min(Number(limit), 100);
+    const finalLimit = Math.min(Number(limit), 100);
+    
     const [leads, total] = await Promise.all([
       SprinklerLead.find(query)
         .populate("createdBy", "name")
@@ -203,14 +239,19 @@ exports.getAllLeads = async (req, res) => {
         .populate("installationAssign.installationTeamMemberId", "name phone")
         .sort({ createdAt: -1 })
         .skip(skip)
-        .limit(limit),
+        .limit(finalLimit),
       SprinklerLead.countDocuments(query),
     ]);
+    
     res.status(200).json({
-      success: true, total, page,
-      pages: Math.ceil(total / limit), leads
+      success: true,
+      leads,
+      total,
+      page: Math.max(Number(page), 1),
+      pages: Math.ceil(total / finalLimit),
     });
   } catch (err) {
+    console.error("GET ALL LEADS ERROR:", err.message);
     res.status(500).json({ success: false, message: "Server error" });
   }
 };

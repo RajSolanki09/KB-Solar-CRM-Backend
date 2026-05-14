@@ -97,7 +97,12 @@ const serviceRequestSchema = new Schema(
         },
       },
     ],
-
+    // Completed flag for quick filtering
+    
+    isComplete: {
+      type: Boolean,
+      default: false,
+    },
     createdBy: {
       type: Schema.Types.ObjectId,
       ref: "User",
